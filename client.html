@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STOMP WebSocket 테스트</title>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@^7.0.0/bundles/stomp.umd.min.js"></script>
+</head>
+<body>
+    <h1>STOMP WebSocket 테스트</h1>
+
+    <video id="1" autoplay="true" playsinline="true"></video>
+
+    <script src="env.js"></script>
+    <script>
+        // STOMP client 생성
+        const stompClient = new StompJs.Client({
+            brokerURL: `ws://${SERVER_URL}:8080/signaling`,
+            debug: (msg) => console.log("[STOMP DEBUG]:", msg),
+            reconnectDelay: 5000,
+            heartbeatIncoming: 4000,
+            heartbeatOutgoing: 4000
+        });
+
+        // WebRTC PeerConnection 생성 함수
+        function createPeerConnection() {
+
+            // PeerConnection 생성 (stun 서버 포함)
+            const pc = new RTCPeerConnection({
+                sdpSemantics: 'unified-plan',
+                iceServers: [
+                    {
+                        urls: `turn:${SERVER_URL}:3478`,
+                        username: 'turn',
+                        credential: 'capstonedesign'
+                    }
+                ]
+            });
+
+            // track 이벤트 감지 시 비디오 재생
+            pc.addEventListener("track", (event) => {
+                if (event.track.kind == 'video') {
+                    const video = document.getElementById(1);
+                    video.srcObject = event.streams[0];  
+                }
+            });
+
+            return pc;
+        }
+
+        // STOMP 연결 성공 시 실행될 함수
+        stompClient.onConnect = () => {
+            const pc = createPeerConnection();
+
+            // 해당 connection을 수신 전용으로 설정 (이거 없으면 왜인지 모르겠는데 안됨)
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+
+            sendOffer(pc, 1);
+
+            stompClient.subscribe("/topic/answer/1", (answer) => {
+                const message = JSON.parse(answer.body).body;
+                pc.setRemoteDescription(new RTCSessionDescription(message));
+            });
+        };
+
+
+        // Offer 생성 및 전송
+        async function sendOffer(pc, camNum) {
+
+            pc.createOffer().then((offer) => {
+                return pc.setLocalDescription(offer);
+            }).then(() => {
+                // wait for ICE gathering to complete
+                return new Promise((resolve) => {
+                    if (pc.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        const checkState = () => {
+                            if (pc.iceGatheringState === 'complete') {
+                                pc.removeEventListener('icegatheringstatechange', checkState);
+                                resolve();
+                            }
+                        };
+                        pc.addEventListener('icegatheringstatechange', checkState);
+                    }
+                });
+            }).then(() => {
+                const offer = pc.localDescription;
+                stompClient.publish({
+                    destination: `/app/offer/${camNum}`,
+                    body: JSON.stringify({
+                        key: camNum,
+                        body: offer
+                    })
+                });
+            })
+        }
+
+        // ice candidate 수집 상태 체크 함수 (complete면 resolve)
+        function checkCandidate(pc) {
+            return new Promise((resolve) => {
+                if (pc.iceGatheringState === 'complete') {
+                    resolve();
+                } else {
+                    const checkState = () => {
+                        if (pc.iceGatheringState === 'complete') {
+                            pc.removeEventListener('icegatheringstatechange', checkState);
+                            resolve();
+                        }
+                    };
+                    pc.addEventListener('icegatheringstatechange', checkState);
+                }
+            });
+        }
+
+        // STOMP 클라이언트 연결 시작
+        stompClient.activate();
+    </script>
+</body>
+</html>
