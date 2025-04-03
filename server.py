@@ -2,7 +2,7 @@ import asyncio
 import json
 import websockets
 import stomper
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
 from av import VideoFrame
 import cv2
 from ultralytics import YOLO
@@ -10,7 +10,8 @@ import fractions
 import env
 
 yolo_model = YOLO("yolov8n.pt")
-pcs = []
+pcs = {}
+video = None
 
 # openCV로 받아온 프레임을 yolo로 처리해 webrtc track 형식으로 반환하는 클래스
 class CustomVideoStreamTrack(VideoStreamTrack):
@@ -49,7 +50,7 @@ async def connect():
         await websocket.send("CONNECT\naccept-version:1.0,1.1,2.0\n\n\x00\n")
         
         # offer 이벤트 구독
-        sub_offer = stomper.subscribe("/topic/offer/1", idx="1")
+        sub_offer = stomper.subscribe("/topic/offer", 0)
         await websocket.send(sub_offer)
 
         while True:
@@ -63,35 +64,48 @@ async def connect():
             body = json.loads(body_str)
 
             # offer를 수신했다면
-            if (endpoint == "/topic/offer/1"):
+            if (endpoint == "/topic/offer"):
                 print("[OFFER] receive offer: " + body_str)
 
+                client_id = body.get("client_id")
                 offer = RTCSessionDescription(sdp=body.get("body").get("sdp"), type=body.get("body").get("type"))
 
                 pc = createPeerConnection()
-                pcs.append(pc)
+                pcs.setdefault(client_id, pc)
 
                 @pc.on("connectionstatechange")
                 async def on_connectionstatechange():
                     print("Connection state is %s" % pc.connectionState)
-                    if pc.connectionState == "failed":
+                    if pc.connectionState == "failed" or pc.connectionState == "closed":
                         await pc.close()
+                        pcs.pop(client_id)
 
                 await pc.setRemoteDescription(offer)
 
                 answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
 
-                send_answer = stomper.send("/app/answer/1", json.dumps({"key": 1, "body": {"sdp": answer.sdp, "type": answer.type}}))
+                send_answer = stomper.send(f"/app/answer/{client_id}", json.dumps({"body": {"sdp": answer.sdp, "type": answer.type}}))
                 await websocket.send(send_answer)
 
 
 def createPeerConnection():
-    pc = RTCPeerConnection()
-    video = CustomVideoStreamTrack(0)
+    global video
+
+    # ice_server = RTCIceServer(
+    #     urls = f"turn:{env.SERVER_URL}:3478",
+    #     username = env.TURN_USERNAME,
+    #     credential= env.TURN_PASSWORD
+    # )
+    pc = RTCPeerConnection(
+        # configuration=RTCConfiguration(iceServers=[ice_server])
+    )
+
+    if video is None: 
+        video = CustomVideoStreamTrack(0)
 
     if video:
-        pc.addTrack(video)  
+        pc.addTrack(video)
 
     return pc
 

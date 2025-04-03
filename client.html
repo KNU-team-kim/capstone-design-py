@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STOMP WebSocket 테스트</title>
     <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@^7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/uuid@8.3.2/dist/umd/uuid.min.js"></script>
 </head>
 <body>
     <h1>STOMP WebSocket 테스트</h1>
@@ -13,6 +14,9 @@
 
     <script src="env.js"></script>
     <script>
+
+        const clientId = uuid.v4();
+
         // STOMP client 생성
         const stompClient = new StompJs.Client({
             brokerURL: `ws://${SERVER_URL}:8080/signaling`,
@@ -28,13 +32,13 @@
             // PeerConnection 생성 (stun 서버 포함)
             const pc = new RTCPeerConnection({
                 sdpSemantics: 'unified-plan',
-                iceServers: [
-                    {
-                        urls: `turn:${SERVER_URL}:3478`,
-                        username: 'turn',
-                        credential: 'capstonedesign'
-                    }
-                ]
+                // iceServers: [
+                //     {
+                //         urls: `turn:${SERVER_URL}:3478`,
+                //         username: TURN_USERNAME,
+                //         credential: TURN_PASSWORD
+                //     }
+                // ]
             });
 
             // track 이벤트 감지 시 비디오 재생
@@ -56,9 +60,9 @@
             pc.addTransceiver('video', { direction: 'recvonly' });
             pc.addTransceiver('audio', { direction: 'recvonly' });
 
-            sendOffer(pc, 1);
+            sendOffer(pc, clientId);
 
-            stompClient.subscribe("/topic/answer/1", (answer) => {
+            stompClient.subscribe(`/topic/answer/${clientId}`, (answer) => {
                 const message = JSON.parse(answer.body).body;
                 pc.setRemoteDescription(new RTCSessionDescription(message));
             });
@@ -66,7 +70,7 @@
 
 
         // Offer 생성 및 전송
-        async function sendOffer(pc, camNum) {
+        async function sendOffer(pc, clientId) {
 
             pc.createOffer().then((offer) => {
                 return pc.setLocalDescription(offer);
@@ -88,30 +92,13 @@
             }).then(() => {
                 const offer = pc.localDescription;
                 stompClient.publish({
-                    destination: `/app/offer/${camNum}`,
+                    destination: `/app/offer`,
                     body: JSON.stringify({
-                        key: camNum,
+                        client_id: clientId,
                         body: offer
                     })
                 });
             })
-        }
-
-        // ice candidate 수집 상태 체크 함수 (complete면 resolve)
-        function checkCandidate(pc) {
-            return new Promise((resolve) => {
-                if (pc.iceGatheringState === 'complete') {
-                    resolve();
-                } else {
-                    const checkState = () => {
-                        if (pc.iceGatheringState === 'complete') {
-                            pc.removeEventListener('icegatheringstatechange', checkState);
-                            resolve();
-                        }
-                    };
-                    pc.addEventListener('icegatheringstatechange', checkState);
-                }
-            });
         }
 
         // STOMP 클라이언트 연결 시작
