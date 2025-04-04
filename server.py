@@ -66,7 +66,7 @@ async def connect():
             if (endpoint == "/topic/offer/1"):
                 print("[OFFER] receive offer: " + body_str)
 
-                offer = RTCSessionDescription(sdp=body.get("body").get("sdp"), type=body.get("body").get("type"))
+                offer = RTCSessionDescription(sdp=body.get("body").get("offer"), type=body.get("body").get("type"))
 
                 pc = createPeerConnection()
                 pcs.append(pc)
@@ -88,7 +88,7 @@ async def connect():
 
 def createPeerConnection():
     pc = RTCPeerConnection()
-    video = CustomVideoStreamTrack(0)
+    video = CustomVideoStreamTrack(1)
 
     if video:
         pc.addTrack(video)  
