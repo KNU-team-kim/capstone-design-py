@@ -5,9 +5,9 @@ import cv2
 import io
 import os
 
-API_URL = os.getenv("API_URL")
-
 def send_request(direction, current_counter, confidences, annotated_frame):
+    API_URL = os.getenv("API_URL")
+
     logger.info(f"{direction} 변경 감지: {current_counter}")
 
     # 파일 이름 UUID로 생성
