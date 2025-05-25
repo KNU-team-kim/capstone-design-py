@@ -6,8 +6,6 @@ import stomper
 import json
 import os
 
-WS_URL = os.getenv("WS_URL")
-
 # STOMP subscribe 함수
 async def subscribe(endpoint, websocket):
     message = stomper.subscribe(endpoint, idx="all")
@@ -88,7 +86,7 @@ async def process_message(message, websocket):
 # Signaling 메시지를 listening 하는 함수
 async def execute():
     try:
-        async with websockets.connect(WS_URL) as websocket:
+        async with websockets.connect(os.getenv("WS_URL")) as websocket:
             logger.info("Signaling 서버에 WebSocket 연결 성공")            
 
             await connect(websocket)
