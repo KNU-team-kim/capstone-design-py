@@ -145,9 +145,9 @@ class CustomVideoStreamTrack(VideoStreamTrack):
                 self.last_detected_counter = current_counter
 
             if self.change_stable_count >= self.required_stability_frames:
-                if len(confidences) > 0: return True
                 self.previous_counter = current_counter
                 self.change_stable_count = 0
+                if len(confidences) > 0: return True
         else:
             self.change_stable_count = 0
         
